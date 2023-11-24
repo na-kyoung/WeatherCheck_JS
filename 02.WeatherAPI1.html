@@ -1,0 +1,126 @@
+<!-- 날씨API - 단기예보조회 -->
+<!-- 버튼 클릭시, 입력 날짜부터 3일간의 1시간별 기온/강수량 출력 -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <!-- Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <div class="row">
+            <div class="col-4">
+                <button type="button" class="btn btn-primary"> 데이터 가져오기 </button>
+            </div>
+            <div class="col-8" id="weather"></div>
+        </div>
+    </div>
+
+<!-- jQuery -->
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+<script>
+// 현재 날짜 구하기
+// let date = new Date();
+// let year = date.getFullYear(); // 년도
+// let month = date.getMonth() + 1;  // 월
+// let day = date.getDate();  // 날짜
+
+// let ymd = year.toString()+month.toString()+day.toString();
+// let today = parseInt(ymd);
+// console.log(today);
+
+let today = 20231124;
+let lng = 55;
+let lat = 127;
+
+$('.btn').click(function(){
+    console.log("btn click");
+
+    // 1. 링크 전체로 가져오기 - 성공
+    // $.ajax({
+    //     url: 'https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst?serviceKey={날씨APIKey}&pageNo=1&numOfRows=1000&dataType=JSON&base_date=20231124&base_time=0500&nx=55&ny=127',
+    //     dataType: 'json'
+
+
+    // 2. 링크 params 나눠서 가져오기
+    // $.ajax({
+    //     url: 'https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst',
+    //     dataType: 'json',
+    //     data: {
+    //         // key: value
+    //         'serviceKey': EncodingKey,
+    //         'pageNo': 1,
+    //         'numOfRows': 1000,
+    //         'dataType': JSON,
+    //         'base_date': 20231124,
+    //         'base_time': "0600",
+    //         'nx': 55,
+    //         'ny': 127
+    //     }
+
+    // 3. fetch로 데이터 가져오기
+    fetch(
+        `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst?serviceKey=${EncodingKey}&pageNo=1&numOfRows=1000&dataType=JSON&base_date=${today}&base_time=0500&nx=${lng}&ny=${lat}`
+    )
+    .then(response => response.json()) // 데이터 json으로 변환
+    // json - data 불러오기
+    .then((json) => {
+        // console.log(json.response.body.items.item);
+        console.log("data 불러오기");
+        let items = json.response.body.items.item;
+        // console.log(items);
+
+    // ajax - data 불러오기
+    // }).done(function(data){
+        // console.log("data 불러오기");
+        // console.log(data);
+        // console.log(data.response.body.items.item);
+        // const items = data.response.body.items.item;
+        // console.log(items);
+
+        let rs = [];
+
+        $.each(items, function(index, item){
+            let date = item.fcstDate;
+            let time = item.fcstTime.substr(0,2);
+            let category = item.category;
+            let value = item.fcstValue;
+            console.log(category, value);
+
+            // rs.push(`<li class="list-group-item"> 날짜 : ${date} / 시간 : ${time} </li>`);
+
+            if(category == "TMP"){ // TMP = 1시간 기온
+                // console.log(value);
+                rs.push(`<li class="list-group-item"> 날짜 : ${date} / 시간 : ${time}시  / 기온 ${value}&#x2103 </li>`); // ℃ = &#x2103
+            }
+            if(category == "TMN"){ // TMN = 일 최저기온
+                // console.log(value);
+                rs.push(`<li class="list-group-item"> 날짜 : ${date} / 시간 : ${time}시 / 일 최저기온 ${value}&#x2103 </li>`); // ℃ = &#x2103
+            }
+            if(category == "TMX"){ // TMX = 일 최고기온
+                // console.log(value);
+                rs.push(`<li class="list-group-item"> 날짜 : ${date} / 시간 : ${time}시 / 일 최고기온 ${value}&#x2103 </li>`); // ℃ = &#x2103
+            }
+            // if(category == "REH"){ // REH = 습도
+            //     console.log(value);
+            //     rs.push(`<li class="list-group-item"> 날짜 : ${date} / 시간 : ${time}시  / 습도 ${value}% </li>`);
+            // }
+            if(category == "PCP"){ // PCP = 1시간 강수량
+                // console.log(value);
+                rs.push(`<li class="list-group-item"> 날짜 : ${date} / 시간 : ${time}시  / 강수량 ${value}mm </li>`);
+            }
+
+            // 배열에 리스트 형식으로 추가
+            // rs.push(`<li class="list-group-item" data-lat="${lat}" data-lng="${lng}"> ${title} </li>`);
+        });
+        // $('#pocket').html(`<ul class="list-group"> ${rs.join('')} </ul>`);
+        $('#weather').html(`<ul class="list-group"> ${rs.join('')} </ul>`);
+    });
+});
+</script>
+</body>
+</html>
