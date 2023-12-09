@@ -1,0 +1,327 @@
+<!-- 지도 API + 날씨 API -->
+<!-- 현재 위치 가져오기 -->
+<!-- 키워드 검색 시, 해당 위치로 지도 이동 & 주소 출력 & 마커 생성 -->
+<!-- 해당 위치 & 오늘 날짜로 날씨 출력 -->
+<!-- 날씨 출력 시, 오늘만 & 현재 시간부터 -->
+<!-- 오늘부터 3일간 최저/최고 기온 출력 -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        body {margin: 0}    
+        #map {
+            height: 100vh; /* viewport height */
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="row">
+            <div class="col-3">
+                <form onsubmit="searchPlaces(); return false;">
+                    장소 : <input type="text" class="form-control my-2" id="keyword" name="keyword" placeholder="장소 입력 후 엔터" />
+                    <button type="submit">검색하기</button>
+                </form>
+                <hr>
+                <div class="addr">
+                    <span id="centerAddr"></span>
+                </div>
+                <!-- <div id="address"></div> -->
+                <div id="temperature"></div>
+                <div id="weather"></div>
+            </div>
+            <div class="col-9">
+                <div id="map"></div>
+            </div>
+        </div>
+    </div>
+    
+<!-- KakaoMapAPI & JQuery -->
+<script src="//dapi.kakao.com/v2/maps/sdk.js?appkey={카카오MapAPIKey}&libraries=services"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+<script>
+// 지도 생성
+let mapContainer = document.getElementById('map'),
+    mapOption = {
+        center: new kakao.maps.LatLng(37.566826, 126.9786567),
+        level: 3
+    };  
+const map = new kakao.maps.Map(mapContainer, mapOption);
+
+// 장소 검색 객체 생성
+let ps = new kakao.maps.services.Places();  
+
+// 주소-좌표 변환 객체 생성
+const geocoder = new kakao.maps.services.Geocoder();
+
+// 마커 저장할 리스트 - 지도 이동시 마커 초기화 용도
+let markers = [];
+
+
+// #1. 현재 위치 - 지도 중심 & 날씨
+// 현재 위치 가져오기
+navigator.geolocation.getCurrentPosition((position) => {
+    // console.log(position);
+    currentMap(position);
+});
+
+// 현재 위치를 중심으로 지도 중심 변경 & 주소 & 현재 위치 날씨
+function currentMap(position) {
+    const lat = position.coords.latitude; // 위도
+    const lng = position.coords.longitude; // 경도
+    console.log("현재 위치 좌표", lng, lat);
+
+    map.setCenter(new kakao.maps.LatLng(lat, lng));
+    getWeather(parseInt(lng),parseInt(lat));
+}
+
+
+// #2. 지도 중심 좌표 -> 주소, 지도 중심 마커 표시
+// 현재 지도 중심좌표로 주소를 검색 -> 지도 좌측 상단에 표시
+searchAddrFromCoords(map.getCenter(), displayCenterInfo);
+
+// 중심 좌표나 확대 수준이 변경됐을 때 -> 지도 중심 주소 정보 변경, 마커 위치 변경
+kakao.maps.event.addListener(map, 'idle', function() {
+    searchAddrFromCoords(map.getCenter(), displayCenterInfo);
+    setMarker(map.getCenter());
+});
+
+// 좌표로 행정동 주소 정보 요청
+function searchAddrFromCoords(coords, callback) {
+    geocoder.coord2RegionCode(coords.getLng(), coords.getLat(), callback);         
+}
+
+// 지도 좌측상단에 지도 중심좌표에 대한 주소정보 출력
+function displayCenterInfo(result, status) {
+    if (status === kakao.maps.services.Status.OK) {
+        // const addr = document.getElementById('centerAddr');
+        const addr = document.querySelector('#centerAddr');
+
+        for(let i = 0; i < result.length; i++) {
+            // 행정동의 region_type 값은 'H' 이므로
+            if (result[i].region_type === 'H') {
+                addr.innerHTML = result[i].address_name;
+                break;
+            }
+        }
+    }    
+}
+
+// 지도 중심에 마커 생성
+function setMarker(coords){
+    // console.log(coords);
+    const lat = coords.getLat(); // 위도
+    const lng = coords.getLng(); // 경도
+    console.log("지도 이동, 현재 중심 좌표", lng, lat);
+
+    for(let marker of markers){
+        marker.setMap(null);
+    }
+    markers = []; // 마커 초기화
+
+    let center = new kakao.maps.LatLng(lat, lng);
+    let marker = new kakao.maps.Marker({ // 마커 생성
+        map: map,
+        position: center
+    });
+    markers.push(marker);
+}
+
+
+// #3. 장소 검색 처리 - 지도 범위 재설정 & 주소 출력 & 날씨
+// 장소 검색을 요청
+function searchPlaces() {
+    let keyword = document.getElementById('keyword').value;
+
+    if (!keyword.replace(/^\s+|\s+$/g, '')) {
+        alert('키워드를 입력해주세요!');
+        return false;
+    }
+    // 장소검색 객체를 통해 키워드로 장소검색을 요청합니다
+    ps.keywordSearch(keyword, placesSearchCB); 
+}
+
+// 장소검색이 완료됐을 때 호출되는 콜백함수
+function placesSearchCB(data, status, pagination) {
+    if (status === kakao.maps.services.Status.OK) {
+        console.log(data);
+        console.log(data[0].x, data[0].y); //lng,lat
+        // console.log(typeof(data[0].x)); //string
+        let lng = parseInt(data[0].x);
+        let lat = parseInt(data[0].y);
+
+        // console.log(data[0].address_name);
+        let address = data[0].address_name;
+        let place = data[0].place_name;
+        // console.log(address,place);
+
+        // 거리가 먼 결과 제외
+        exceptFar(data);
+        // 검색결과로 지도 위치 변경
+        // displayMap(data);
+        // 주소, 위치 표시
+        // displayAddress(address,place);
+        // 해당 좌표로 날씨정보 요청
+        getWeather(lng,lat);
+
+
+    } else if (status === kakao.maps.services.Status.ZERO_RESULT) {
+        alert('검색 결과가 존재하지 않습니다.');
+        return;
+    } else if (status === kakao.maps.services.Status.ERROR) {
+        alert('검색 결과 중 오류가 발생했습니다.');
+        return;
+    }
+}
+
+// 거리가 먼 주소를 제외하기
+function exceptFar(data){
+    // console.log(data);
+    let sumx = 0;
+    let sumy = 0;
+    let place = [];
+    // 좌표 평균 구하기
+    for ( let i=0; i<data.length; i++ ) {
+        sumx += parseFloat(data[i].x);
+        sumy += parseFloat(data[i].y);
+    }
+
+    let meanx = sumx/data.length;
+    let meany = sumy/data.length;
+    // console.log("평균 좌표", meanx, meany);
+
+    // 평균에서 0.1이상 벗어나는 목록 제외
+    for ( let i=0; i<data.length; i++ ) {
+        if((Math.abs(meanx-data[i].x)>=0.1)&&(Math.abs(meanx-data[i].y)>=0.1)){
+        }else{
+            place.push(data[i]);
+        }
+    }
+    //모두가 평균을 벗어나면 첫번째 장소만 추가
+    if(place.length == 0){
+        place.push(data[0]);
+    }
+    // console.log(place);
+    // 지도 범위 재설정
+    displayMap(place);
+}
+
+// 검색 결과 목록을 범위로 지도 위치 변경
+function displayMap(places) {
+    let bounds = new kakao.maps.LatLngBounds();
+
+    for ( let i=0; i<places.length; i++ ) {
+        // 마커를 생성하고 지도에 표시합니다
+        let placePosition = new kakao.maps.LatLng(places[i].y, places[i].x);
+
+        // 검색된 장소 위치를 기준으로 지도 범위를 재설정하기위해
+        // LatLngBounds 객체에 좌표를 추가합니다
+        bounds.extend(placePosition);
+    }
+    // 검색된 장소 위치를 기준으로 지도 범위를 재설정합니다
+    map.setBounds(bounds);
+    map.setLevel(3);
+}
+
+// 첫번째 데이터 주소, 장소이름 출력
+// function displayAddress(address, place){
+//     // console.log(address, place);
+//     let add = [];
+//     add.push(`<li class="list-group-item">${address}</li>`);
+//     add.push(`<li class="list-group-item">${place}</li>`);
+//     $('#address').html(`<ul class="list-group"> ${add.join('')} </ul>`);
+// }
+
+
+// #4. 날씨 출력
+// 받은 좌표에 해당하는 날씨 출력
+function getWeather(lng,lat){
+    console.log("날씨 호출 좌표", lng, lat);
+
+    // 현재 날짜 구하기
+    let date = new Date();
+    let year = date.getFullYear(); // 년도
+    let month = date.getMonth() + 1;  // 월
+    let day = date.getDate();  // 날짜
+    let hour = date.getHours(); // 현재 몇시
+
+    // console.log(typeof(day));
+    if (day <= 9){ // 날짜가 한자리수 일때, 1 -> 01로 바꾸기
+        day = "0"+day.toString();
+        // console.log(day);
+    }
+
+    let ymd = year.toString()+month.toString()+day.toString();
+    let today = parseInt(ymd);
+    console.log("오늘 날짜 :", today, hour, "시");
+    // let today = 20231209;
+
+    // 날씨 데이터 가져오기
+    fetch(
+        `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst?serviceKey=${EncodingKey}&pageNo=1&numOfRows=1000&dataType=JSON&base_date=${today}&base_time=0500&nx=${lat}&ny=${lng}`
+    )
+    .then(response => response.json()) // 데이터 json으로 변환
+    // json - data 불러오기
+    .then((json) => {
+        // console.log(json.response.body.items.item);
+        console.log("날씨 데이터 불러오기");
+        let items = json.response.body.items.item;
+
+        let weather = [];
+        let tem = [];
+
+        $.each(items, function(index, item){
+            let date = item.fcstDate;
+            let time = item.fcstTime.substr(0,2);
+            let category = item.category;
+            let value = item.fcstValue;
+            // console.log(category, value);
+
+            // weather.push(`<li class="list-group-item"> 날짜 : ${date} / 시간 : ${time} </li>`);
+
+            // 최저기온, 최고기온
+            if(category == "TMN"){ // TMN = 일 최저기온
+                // console.log(value);
+                tem.push(`<li class="list-group-item"> ${date.substr(4,2)}/${date.substr(6,2)} / 최저기온 ${value}&#x2103 </li>`); // ℃ = &#x2103
+                // $('#temperature').html(`<li class="list-group-item"> 최저기온 : ${value}&#x2103 </li>`);
+            }
+            if(category == "TMX"){ // TMX = 일 최고기온
+                // console.log(value);
+                tem.push(`<li class="list-group-item"> ${date.substr(4,2)}/${date.substr(6,2)} / 최고기온 ${value}&#x2103 </li>`); // ℃ = &#x2103
+                // $('#temperature').html(`<li class="list-group-item"> 최고기온 : ${value}&#x2103 </li>`);
+            }
+
+            // 오늘 현재시간부터 1시간별 기온
+            if(date==today && time>=hour){ // 현재 시간부터
+                if(category == "TMP"){ // TMP = 1시간 기온
+                    // console.log(value);
+                    weather.push(`<li class="list-group-item"> 날짜 : ${date} / 시간 : ${time}시  / 기온 ${value}&#x2103 </li>`); // ℃ = &#x2103
+                }
+                // if(category == "REH"){ // REH = 습도
+                //     console.log(value);
+                //     weather.push(`<li class="list-group-item"> 날짜 : ${date} / 시간 : ${time}시  / 습도 ${value}% </li>`);
+                // }
+                if(category == "PCP"){ // PCP = 1시간 강수량
+                    // console.log(value);
+                    weather.push(`<li class="list-group-item"> 날짜 : ${date} / 시간 : ${time}시  / 강수량 ${value} </li>`);
+                }
+            }
+
+            // 배열에 리스트 형식으로 추가
+            // weather.push(`<li class="list-group-item" data-lat="${lat}" data-lng="${lng}"> ${title} </li>`);
+        });
+        // $('#pocket').html(`<ul class="list-group"> ${rs.join('')} </ul>`);
+        $('#weather').html(`<ul class="list-group"> ${weather.join('')} </ul>`);
+        $('#temperature').html(`<ul class="list-group"> ${tem.join('')} </ul>`);
+    });
+}
+
+</script>
+</body>
+</html>
